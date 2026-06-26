@@ -1,114 +1,106 @@
-import { useTranslation } from "react-i18next";
-import { Typography, Stack, Divider } from "@mui/material";
-import { DeveloperBoardOutlined } from "@mui/icons-material";
-import { useClashInfo } from "@/hooks/use-clash";
-import { useClash } from "@/hooks/use-clash";
-import { EnhancedCard } from "./enhanced-card";
-import useSWR from "swr";
-import { getRules } from "@/services/api";
-import { getAppUptime, getSystemProxy } from "@/services/cmds";
-import { useMemo, useState, useEffect } from "react";
+import { DeveloperBoardOutlined } from '@mui/icons-material'
+import { Divider, Stack, Typography } from '@mui/material'
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { useClash } from '@/hooks/use-clash'
+import {
+  useClashConfigData,
+  useRulesData,
+  useSystemData,
+  useUptimeData,
+} from '@/providers/app-data-context'
+
+import { EnhancedCard } from './enhanced-card'
 
 // 将毫秒转换为时:分:秒格式的函数
 const formatUptime = (uptimeMs: number) => {
-  const hours = Math.floor(uptimeMs / 3600000);
-  const minutes = Math.floor((uptimeMs % 3600000) / 60000);
-  const seconds = Math.floor((uptimeMs % 60000) / 1000);
-  return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-};
+  const hours = Math.floor(uptimeMs / 3600000)
+  const minutes = Math.floor((uptimeMs % 3600000) / 60000)
+  const seconds = Math.floor((uptimeMs % 60000) / 1000)
+  return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
 
 export const ClashInfoCard = () => {
-  const { t } = useTranslation();
-  const { clashInfo } = useClashInfo();
-  const { version: clashVersion } = useClash();
-  const [sysproxy, setSysproxy] = useState<{ server: string; enable: boolean; bypass: string } | null>(null);
-  const [rules, setRules] = useState<any[]>([]);
-
-  // 使用SWR获取应用运行时间，降低更新频率
-  const { data: uptimeMs = 0 } = useSWR(
-    "appUptime",
-    getAppUptime,
-    {
-      refreshInterval: 1000,
-      revalidateOnFocus: false,
-      dedupingInterval: 1000,
-    },
-  );
-
-  // 在组件加载时获取系统代理信息和规则数据
-  useEffect(() => {
-    // 获取系统代理信息
-    getSystemProxy().then(setSysproxy);
-    
-    // 获取规则数据
-    getRules().then(setRules).catch(() => setRules([]));
-  }, []);
+  const { t } = useTranslation()
+  const { version: clashVersion } = useClash()
+  const { clashConfig } = useClashConfigData()
+  const { rules } = useRulesData()
+  const { uptime } = useUptimeData()
+  const { systemProxyAddress } = useSystemData()
 
   // 使用useMemo缓存格式化后的uptime，避免频繁计算
-  const uptime = useMemo(() => formatUptime(uptimeMs), [uptimeMs]);
+  const formattedUptime = useMemo(() => formatUptime(uptime), [uptime])
 
   // 使用备忘录组件内容，减少重新渲染
   const cardContent = useMemo(() => {
-    if (!clashInfo) return null;
-    
+    if (!clashConfig) return null
+
     return (
       <Stack spacing={1.5}>
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
           <Typography variant="body2" color="text.secondary">
-            {t("Core Version")}
+            {t('home.components.clashInfo.fields.coreVersion')}
           </Typography>
-          <Typography variant="body2" fontWeight="medium">
-            {clashVersion || "-"}
+          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+            {clashVersion || '-'}
           </Typography>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
           <Typography variant="body2" color="text.secondary">
-            {t("System Proxy Address")}
+            {t('home.components.clashInfo.fields.systemProxyAddress')}
           </Typography>
-          <Typography variant="body2" fontWeight="medium">
-            {sysproxy?.server || "-"}
+          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+            {systemProxyAddress}
           </Typography>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
           <Typography variant="body2" color="text.secondary">
-            {t("Mixed Port")}
+            {t('home.components.clashInfo.fields.mixedPort')}
           </Typography>
-          <Typography variant="body2" fontWeight="medium">
-            {clashInfo.mixed_port || "-"}
+          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+            {clashConfig.mixedPort || '-'}
           </Typography>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
           <Typography variant="body2" color="text.secondary">
-            {t("Uptime")}
+            {t('home.components.clashInfo.fields.uptime')}
           </Typography>
-          <Typography variant="body2" fontWeight="medium">
-            {uptime}
+          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+            {formattedUptime}
           </Typography>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
           <Typography variant="body2" color="text.secondary">
-            {t("Rules Count")}
+            {t('home.components.clashInfo.fields.rulesCount')}
           </Typography>
-          <Typography variant="body2" fontWeight="medium">
+          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
             {rules.length}
           </Typography>
         </Stack>
       </Stack>
-    );
-  }, [clashInfo, clashVersion, t, uptime, rules.length, sysproxy]);
+    )
+  }, [
+    clashConfig,
+    clashVersion,
+    t,
+    formattedUptime,
+    rules.length,
+    systemProxyAddress,
+  ])
 
   return (
     <EnhancedCard
-      title={t("Clash Info")}
+      title={t('home.components.clashInfo.title')}
       icon={<DeveloperBoardOutlined />}
       iconColor="warning"
       action={null}
     >
       {cardContent}
     </EnhancedCard>
-  );
-};
+  )
+}

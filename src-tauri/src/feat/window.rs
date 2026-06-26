@@ -1,151 +1,185 @@
-#[cfg(target_os = "macos")]
-use crate::AppHandleManager;
-use crate::{
-    config::Config,
-    core::{handle, sysopt, CoreManager},
-    module::mihomo::MihomoManager,
-    utils::resolve,
-};
-use tauri::Manager;
-use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+use crate::config::Config;
+use crate::core::{CoreManager, handle, sysopt};
+use crate::module::lightweight;
+use crate::utils;
+use crate::utils::window_manager::WindowManager;
+use clash_verge_logging::{Type, logging};
+use tokio::time::{Duration, timeout};
 
-/// Open or close the dashboard window
-#[allow(dead_code)]
-pub fn open_or_close_dashboard() {
-    println!("Attempting to open/close dashboard");
-    log::info!(target: "app", "Attempting to open/close dashboard");
-
-    if let Some(window) = handle::Handle::global().get_window() {
-        println!("Found existing window");
-        log::info!(target: "app", "Found existing window");
-
-        // 如果窗口存在，则切换其显示状态
-        match window.is_visible() {
-            Ok(visible) => {
-                println!("Window visibility status: {}", visible);
-                log::info!(target: "app", "Window visibility status: {}", visible);
-
-                if visible {
-                    println!("Attempting to hide window");
-                    log::info!(target: "app", "Attempting to hide window");
-                    let _ = window.hide();
-                } else {
-                    println!("Attempting to show and focus window");
-                    log::info!(target: "app", "Attempting to show and focus window");
-                    if window.is_minimized().unwrap_or(false) {
-                        let _ = window.unminimize();
-                    }
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
-            Err(e) => {
-                println!("Failed to get window visibility: {:?}", e);
-                log::error!(target: "app", "Failed to get window visibility: {:?}", e);
-            }
-        }
-    } else {
-        println!("No existing window found, creating new window");
-        log::info!(target: "app", "No existing window found, creating new window");
-        resolve::create_window();
+pub async fn open_or_close_dashboard() {
+    if lightweight::is_in_lightweight_mode() {
+        let _ = lightweight::exit_lightweight_mode().await;
+        return;
     }
+
+    let result = WindowManager::toggle_main_window().await;
+    logging!(info, Type::Window, "Window toggle result: {result:?}");
 }
 
-/// Setup window state monitor to save window position and size in real-time
-pub fn setup_window_state_monitor(app_handle: &tauri::AppHandle) {
-    let window = app_handle.get_webview_window("main").unwrap();
-    let app_handle_clone = app_handle.clone();
-
-    // 监听窗口移动事件
-    let app_handle_move = app_handle_clone.clone();
-    window.on_window_event(move |event| {
-        match event {
-            // 窗口移动时保存状态
-            tauri::WindowEvent::Moved(_) => {
-                let _ = app_handle_move.save_window_state(StateFlags::all());
-            }
-            // 窗口调整大小时保存状态
-            tauri::WindowEvent::Resized(_) => {
-                let _ = app_handle_move.save_window_state(StateFlags::all());
-            }
-            // 其他可能改变窗口状态的事件
-            tauri::WindowEvent::ScaleFactorChanged { .. } => {
-                let _ = app_handle_move.save_window_state(StateFlags::all());
-            }
-            // 窗口关闭时保存
-            tauri::WindowEvent::CloseRequested { .. } => {
-                let _ = app_handle_move.save_window_state(StateFlags::all());
-            }
-            _ => {}
-        }
-    });
-}
-
-/// 优化的应用退出函数
-pub fn quit(code: Option<i32>) {
-    log::debug!(target: "app", "启动退出流程");
-
-    // 获取应用句柄并设置退出标志
-    let app_handle = handle::Handle::global().app_handle().unwrap();
+pub async fn quit() {
+    logging!(debug, Type::System, "启动退出流程");
+    // 设置退出标志
     handle::Handle::global().set_is_exiting();
 
-    // 优先关闭窗口，提供立即反馈
-    if let Some(window) = handle::Handle::global().get_window() {
-        let _ = window.hide();
-    }
+    utils::server::shutdown_embedded_server();
+    Config::apply_all_and_save_file().await;
 
-    // 在单独线程中处理资源清理，避免阻塞主线程
-    std::thread::spawn(move || {
-        // 使用tokio运行时执行异步清理任务
-        tauri::async_runtime::block_on(async {
-            // 使用超时机制处理清理操作
-            use tokio::time::{timeout, Duration};
+    logging!(info, Type::System, "开始异步清理资源");
+    let cleanup_result = clean_async().await;
 
-            // 1. 直接关闭TUN模式 (优先处理，通常最容易卡住)
-            if Config::verge().data().enable_tun_mode.unwrap_or(false) {
-                let disable = serde_json::json!({
-                    "tun": {
-                        "enable": false
-                    }
-                });
+    logging!(
+        info,
+        Type::System,
+        "资源清理完成，退出代码: {}",
+        if cleanup_result { 0 } else { 1 }
+    );
 
-                // 设置1秒超时
-                let _ = timeout(
-                    Duration::from_secs(1),
-                    MihomoManager::global().patch_configs(disable),
-                )
-                .await;
+    let app_handle = handle::Handle::app_handle();
+    app_handle.exit(if cleanup_result { 0 } else { 1 });
+}
+
+pub async fn clean_async() -> bool {
+    logging!(info, Type::System, "开始执行异步清理操作...");
+
+    // 重置系统代理
+    let proxy_task = tokio::task::spawn(async {
+        let sys_proxy_enabled = Config::verge().await.data_arc().enable_system_proxy.unwrap_or(false);
+        if !sys_proxy_enabled {
+            logging!(info, Type::Window, "系统代理未启用，跳过重置");
+            return true;
+        }
+
+        logging!(info, Type::Window, "开始重置系统代理...");
+        match timeout(Duration::from_millis(1500), sysopt::Sysopt::global().reset_sysproxy()).await {
+            Ok(Ok(_)) => {
+                logging!(info, Type::Window, "系统代理已重置");
+                true
             }
-
-            // 2. 并行处理系统代理和核心进程清理
-            let proxy_future = timeout(
-                Duration::from_secs(1),
-                sysopt::Sysopt::global().reset_sysproxy(),
-            );
-
-            let core_future = timeout(Duration::from_secs(1), CoreManager::global().stop_core());
-
-            // 同时等待两个任务完成
-            let _ = futures::join!(proxy_future, core_future);
-
-            // 3. 处理macOS特定清理
-            #[cfg(target_os = "macos")]
-            {
-                let _ = timeout(Duration::from_millis(500), resolve::restore_public_dns()).await;
+            Ok(Err(e)) => {
+                logging!(warn, Type::Window, "Warning: 重置系统代理失败: {e}");
+                false
             }
-        });
-
-        // 无论清理结果如何，确保应用退出
-        app_handle.exit(code.unwrap_or(0));
+            Err(_) => {
+                logging!(warn, Type::Window, "Warning: 重置系统代理超时，继续退出");
+                false
+            }
+        }
     });
+
+    // 关闭 Tun 模式 + 停止核心服务
+    let core_task = tokio::task::spawn(async {
+        logging!(info, Type::System, "disable tun");
+        let tun_enabled = Config::verge().await.data_arc().enable_tun_mode.unwrap_or(false);
+        if tun_enabled {
+            let disable_tun = serde_json::json!({ "tun": { "enable": false } });
+
+            logging!(info, Type::System, "send disable tun request to mihomo");
+            match timeout(
+                Duration::from_millis(1000),
+                handle::Handle::mihomo().await.patch_base_config(&disable_tun),
+            )
+            .await
+            {
+                Ok(Ok(_)) => {
+                    logging!(info, Type::Window, "TUN模式已禁用");
+                }
+                Ok(Err(e)) => {
+                    logging!(warn, Type::Window, "Warning: 禁用TUN模式失败: {e}");
+                }
+                Err(_) => {
+                    logging!(
+                        warn,
+                        Type::Window,
+                        "Warning: 禁用TUN模式超时（可能系统正在关机），继续退出流程"
+                    );
+                }
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        let stop_timeout = Duration::from_secs(2);
+        #[cfg(not(target_os = "windows"))]
+        let stop_timeout = Duration::from_secs(3);
+
+        logging!(info, Type::System, "stop core");
+        match timeout(stop_timeout, CoreManager::global().stop_core()).await {
+            Ok(_) => {
+                logging!(info, Type::Window, "core已停止");
+                true
+            }
+            Err(_) => {
+                logging!(
+                    warn,
+                    Type::Window,
+                    "Warning: 停止core超时（可能系统正在关机），继续退出"
+                );
+                false
+            }
+        }
+    });
+
+    // DNS恢复（仅macOS）
+    let dns_task = tokio::task::spawn(async {
+        #[cfg(target_os = "macos")]
+        match timeout(
+            Duration::from_millis(1000),
+            crate::utils::resolve::dns::restore_public_dns(),
+        )
+        .await
+        {
+            Ok(_) => {
+                logging!(info, Type::Window, "DNS设置已恢复");
+                true
+            }
+            Err(_) => {
+                logging!(warn, Type::Window, "Warning: 恢复DNS设置超时");
+                false
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        true
+    });
+
+    // 并行执行清理任务
+    let (proxy_result, core_result, dns_result) = tokio::join!(proxy_task, core_task, dns_task);
+
+    let proxy_success = proxy_result.unwrap_or_default();
+    let core_success = core_result.unwrap_or_default();
+    let dns_success = dns_result.unwrap_or_default();
+
+    let all_success = proxy_success && core_success && dns_success;
+
+    logging!(
+        info,
+        Type::System,
+        "异步关闭操作完成 - 代理: {}, 核心: {}, DNS: {}, 总体: {}",
+        proxy_success,
+        core_success,
+        dns_success,
+        all_success
+    );
+
+    all_success
 }
 
 #[cfg(target_os = "macos")]
-pub fn hide() {
-    if let Some(window) = handle::Handle::global().get_window() {
-        if window.is_visible().unwrap_or(false) {
-            AppHandleManager::global().set_activation_policy_accessory();
-            let _ = window.hide();
-        }
+pub async fn hide() {
+    use crate::module::lightweight::add_light_weight_timer;
+
+    let enable_auto_light_weight_mode = Config::verge()
+        .await
+        .data_arc()
+        .enable_auto_light_weight_mode
+        .unwrap_or(false);
+
+    if enable_auto_light_weight_mode {
+        add_light_weight_timer().await;
     }
+
+    if let Some(window) = WindowManager::get_main_window()
+        && window.is_visible().unwrap_or(false)
+    {
+        let _ = window.hide();
+    }
+    handle::Handle::global().set_activation_policy_accessory();
 }

@@ -1,162 +1,233 @@
-import { useTranslation } from "react-i18next";
-import { Typography, Stack, Divider, Chip, IconButton } from "@mui/material";
-import { InfoOutlined, SettingsOutlined } from "@mui/icons-material";
-import { useVerge } from "@/hooks/use-verge";
-import { EnhancedCard } from "./enhanced-card";
-import useSWR from "swr";
-import { getRunningMode, getSystemInfo, installService } from "@/services/cmds";
-import { useNavigate } from "react-router-dom";
-import { version as appVersion } from "@root/package.json";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLockFn } from "ahooks";
-import { Notice } from "@/components/base";
+import {
+  InfoOutlined,
+  SettingsOutlined,
+  AdminPanelSettingsOutlined,
+  DnsOutlined,
+  ExtensionOutlined,
+} from '@mui/icons-material'
+import { Typography, Stack, Divider, Chip, IconButton } from '@mui/material'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
+
+import { useServiceInstaller } from '@/hooks/use-service-installer'
+import { useSystemState } from '@/hooks/use-system-state'
+import { useVerge } from '@/hooks/use-verge'
+import { getSystemInfo } from '@/services/cmds'
+import { version as appVersion } from '@root/package.json'
+
+import { EnhancedCard } from './enhanced-card'
 
 export const SystemInfoCard = () => {
-  const { t } = useTranslation();
-  const { verge, patchVerge } = useVerge();
-  const navigate = useNavigate();
+  const { t } = useTranslation()
+  const { verge, patchVerge } = useVerge()
+  const navigate = useNavigate()
+  const { isAdminMode, isSidecarMode } = useSystemState()
+  const { installServiceAndRestartCore } = useServiceInstaller()
 
-  // 系统信息状态
-  const [osInfo, setOsInfo] = useState("");
-
-  // 获取运行模式
-  const { data: runningMode = "sidecar", mutate: mutateRunningMode } = useSWR(
-    "getRunningMode",
-    getRunningMode,
-    { suspense: false, revalidateOnFocus: false },
-  );
-
-  // 是否以sidecar模式运行
-  const isSidecarMode = runningMode === "sidecar";
+  const [osInfo, setOsInfo] = useState('')
 
   // 初始化系统信息
   useEffect(() => {
-    // 获取系统信息
     getSystemInfo()
       .then((info) => {
-        const lines = info.split("\n");
+        const lines = info.split('\n')
         if (lines.length > 0) {
-          const sysName = lines[0].split(": ")[1] || "";
-          const sysVersion = lines[1].split(": ")[1] || "";
-          setOsInfo(`${sysName} ${sysVersion}`);
+          const sysName = lines[0].split(': ')[1] || ''
+          let sysVersion = lines[1].split(': ')[1] || ''
+
+          if (
+            sysName &&
+            sysVersion.toLowerCase().startsWith(sysName.toLowerCase())
+          ) {
+            sysVersion = sysVersion.substring(sysName.length).trim()
+          }
+
+          setOsInfo(`${sysName} ${sysVersion}`)
         }
       })
-      .catch(console.error);
-  }, []);
+      .catch(console.error)
+  }, [])
 
   // 导航到设置页面
   const goToSettings = useCallback(() => {
-    navigate("/settings");
-  }, [navigate]);
+    navigate('/settings')
+  }, [navigate])
 
   // 切换自启动状态
   const toggleAutoLaunch = useCallback(async () => {
-    if (!verge) return;
+    if (!verge) return
     try {
-      await patchVerge({ enable_auto_launch: !verge.enable_auto_launch });
+      await patchVerge({ enable_auto_launch: !verge.enable_auto_launch })
     } catch (err) {
-      console.error("切换开机自启动状态失败:", err);
+      console.error('切换开机自启动状态失败:', err)
     }
-  }, [verge, patchVerge]);
+  }, [verge, patchVerge])
 
-  // 安装系统服务
-  const onInstallService = useLockFn(async () => {
-    try {
-      Notice.info(t("Installing Service..."), 1000);
-      await installService();
-      Notice.success(t("Service Installed Successfully"), 2000);
-      await mutateRunningMode();
-    } catch (err: any) {
-      Notice.error(err.message || err.toString(), 3000);
-    }
-  });
-
-  // 点击运行模式处理
+  // 点击运行模式处理,Sidecar或纯管理员模式允许安装服务
   const handleRunningModeClick = useCallback(() => {
-    if (isSidecarMode) {
-      onInstallService();
+    if (isSidecarMode || (isAdminMode && isSidecarMode)) {
+      installServiceAndRestartCore()
     }
-  }, [isSidecarMode, onInstallService]);
+  }, [isSidecarMode, isAdminMode, installServiceAndRestartCore])
 
   // 是否启用自启动
   const autoLaunchEnabled = useMemo(
     () => verge?.enable_auto_launch || false,
     [verge],
-  );
+  )
 
   // 运行模式样式
   const runningModeStyle = useMemo(
     () => ({
-      cursor: isSidecarMode ? "pointer" : "default",
-      textDecoration: isSidecarMode ? "underline" : "none",
-      "&:hover": {
-        opacity: isSidecarMode ? 0.7 : 1,
+      // Sidecar或纯管理员模式允许安装服务
+      cursor:
+        isSidecarMode || (isAdminMode && isSidecarMode) ? 'pointer' : 'default',
+      textDecoration:
+        isSidecarMode || (isAdminMode && isSidecarMode) ? 'underline' : 'none',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 0.5,
+      '&:hover': {
+        opacity: isSidecarMode || (isAdminMode && isSidecarMode) ? 0.7 : 1,
       },
     }),
-    [isSidecarMode],
-  );
+    [isSidecarMode, isAdminMode],
+  )
+
+  // 获取模式图标和文本
+  const getModeIcon = () => {
+    if (isAdminMode) {
+      // 判断是否为组合模式（管理员+服务）
+      if (!isSidecarMode) {
+        return (
+          <>
+            <AdminPanelSettingsOutlined
+              sx={{ color: 'primary.main', fontSize: 16 }}
+              titleAccess={t('home.components.systemInfo.badges.adminMode')}
+            />
+            <DnsOutlined
+              sx={{ color: 'success.main', fontSize: 16, ml: 0.5 }}
+              titleAccess={t('home.components.systemInfo.badges.serviceMode')}
+            />
+          </>
+        )
+      }
+      return (
+        <AdminPanelSettingsOutlined
+          sx={{ color: 'primary.main', fontSize: 16 }}
+          titleAccess={t('home.components.systemInfo.badges.adminMode')}
+        />
+      )
+    } else if (isSidecarMode) {
+      return (
+        <ExtensionOutlined
+          sx={{ color: 'info.main', fontSize: 16 }}
+          titleAccess={t('home.components.systemInfo.badges.sidecarMode')}
+        />
+      )
+    } else {
+      return (
+        <DnsOutlined
+          sx={{ color: 'success.main', fontSize: 16 }}
+          titleAccess={t('home.components.systemInfo.badges.serviceMode')}
+        />
+      )
+    }
+  }
+
+  // 获取模式文本
+  const getModeText = () => {
+    if (isAdminMode) {
+      // 判断是否同时处于服务模式
+      if (!isSidecarMode) {
+        return t('home.components.systemInfo.badges.adminServiceMode')
+      }
+      return t('home.components.systemInfo.badges.adminMode')
+    } else if (isSidecarMode) {
+      return t('home.components.systemInfo.badges.sidecarMode')
+    } else {
+      return t('home.components.systemInfo.badges.serviceMode')
+    }
+  }
 
   // 只有当verge存在时才渲染内容
-  if (!verge) return null;
+  if (!verge) return null
 
   return (
     <EnhancedCard
-      title={t("System Info")}
+      title={t('home.components.systemInfo.title')}
       icon={<InfoOutlined />}
       iconColor="error"
       action={
-        <IconButton size="small" onClick={goToSettings} title={t("Settings")}>
+        <IconButton
+          size="small"
+          onClick={goToSettings}
+          title={t('home.components.systemInfo.actions.settings')}
+        >
           <SettingsOutlined fontSize="small" />
         </IconButton>
       }
     >
       <Stack spacing={1.5}>
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
           <Typography variant="body2" color="text.secondary">
-            {t("OS Info")}
+            {t('home.components.systemInfo.fields.osInfo')}
           </Typography>
-          <Typography variant="body2" fontWeight="medium">
+          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
             {osInfo}
           </Typography>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack
+          direction="row"
+          sx={{ justifyContent: 'space-between', alignItems: 'center' }}
+        >
           <Typography variant="body2" color="text.secondary">
-            {t("Auto Launch")}
+            {t('home.components.systemInfo.fields.autoLaunch')}
           </Typography>
-          <Chip
-            size="small"
-            label={autoLaunchEnabled ? t("Enabled") : t("Disabled")}
-            color={autoLaunchEnabled ? "success" : "default"}
-            variant={autoLaunchEnabled ? "filled" : "outlined"}
-            onClick={toggleAutoLaunch}
-            sx={{ cursor: "pointer" }}
-          />
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Chip
+              size="small"
+              label={
+                autoLaunchEnabled
+                  ? t('shared.statuses.enabled')
+                  : t('shared.statuses.disabled')
+              }
+              color={autoLaunchEnabled ? 'success' : 'default'}
+              variant={autoLaunchEnabled ? 'filled' : 'outlined'}
+              onClick={toggleAutoLaunch}
+              sx={{ cursor: 'pointer' }}
+            />
+          </Stack>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack
+          direction="row"
+          sx={{ justifyContent: 'space-between', alignItems: 'center' }}
+        >
           <Typography variant="body2" color="text.secondary">
-            {t("Running Mode")}
+            {t('home.components.systemInfo.fields.runningMode')}
           </Typography>
           <Typography
             variant="body2"
-            fontWeight="medium"
             onClick={handleRunningModeClick}
-            sx={runningModeStyle}
+            sx={{ ...runningModeStyle, fontWeight: 'medium' }}
           >
-            {isSidecarMode ? t("Sidecar Mode") : t("Service Mode")}
+            {getModeIcon()}
+            {getModeText()}
           </Typography>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
           <Typography variant="body2" color="text.secondary">
-            {t("Verge Version")}
+            {t('home.components.systemInfo.fields.vergeVersion')}
           </Typography>
-          <Typography variant="body2" fontWeight="medium">
+          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
             v{appVersion}
           </Typography>
         </Stack>
       </Stack>
     </EnhancedCard>
-  );
-};
+  )
+}
