@@ -22,7 +22,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
   const [values, setValues] = useState({
     appLogLevel: "info",
     autoCloseConnection: true,
-    autoCheckUpdate: true,
     enableBuiltinEnhanced: true,
     proxyLayoutColumn: 6,
     defaultLatencyTest: "",
@@ -36,7 +35,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
       setValues({
         appLogLevel: verge?.app_log_level ?? "info",
         autoCloseConnection: verge?.auto_close_connection ?? true,
-        autoCheckUpdate: verge?.auto_check_update ?? true,
         enableBuiltinEnhanced: verge?.enable_builtin_enhanced ?? true,
         proxyLayoutColumn: verge?.proxy_layout_column || 6,
         defaultLatencyTest: verge?.default_latency_test || "",
@@ -52,7 +50,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
       await patchVerge({
         app_log_level: values.appLogLevel,
         auto_close_connection: values.autoCloseConnection,
-        auto_check_update: values.autoCheckUpdate,
         enable_builtin_enhanced: values.enableBuiltinEnhanced,
         proxy_layout_column: values.proxyLayoutColumn,
         default_latency_test: values.defaultLatencyTest,
@@ -114,17 +111,6 @@ export const MiscViewer = forwardRef<DialogRef>((props, ref) => {
               setValues((v) => ({ ...v, autoCloseConnection: c }))
             }
             sx={{ marginLeft: "auto" }}
-          />
-        </ListItem>
-
-        <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("Auto Check Update")} />
-          <Switch
-            edge="end"
-            checked={values.autoCheckUpdate}
-            onChange={(_, c) =>
-              setValues((v) => ({ ...v, autoCheckUpdate: c }))
-            }
           />
         </ListItem>
 

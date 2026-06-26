@@ -1,10 +1,7 @@
-import { Box, ButtonGroup, IconButton, Select, MenuItem } from "@mui/material";
+import { Box } from "@mui/material";
 import Grid from "@mui/material/Grid2";
-import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
 import { BasePage, Notice } from "@/components/base";
-import { GitHub, HelpOutlineRounded, Telegram } from "@mui/icons-material";
-import { openWebUrl } from "@/services/cmds";
 import SettingVergeBasic from "@/components/setting/setting-verge-basic";
 import SettingVergeAdvanced from "@/components/setting/setting-verge-advanced";
 import SettingClash from "@/components/setting/setting-clash";
@@ -18,54 +15,11 @@ const SettingPage = () => {
     Notice.error(err?.message || err.toString());
   };
 
-  const toGithubRepo = useLockFn(() => {
-    return openWebUrl("https://github.com/clash-verge-rev/clash-verge-rev");
-  });
-
-  const toGithubDoc = useLockFn(() => {
-    return openWebUrl("https://clash-verge-rev.github.io/index.html");
-  });
-
-  const toTelegramChannel = useLockFn(() => {
-    return openWebUrl("https://t.me/clash_verge_re");
-  });
-
   const mode = useThemeMode();
   const isDark = mode === "light" ? false : true;
 
   return (
-    <BasePage
-      title={t("Settings")}
-      header={
-        <ButtonGroup variant="contained" aria-label="Basic button group">
-          <IconButton
-            size="medium"
-            color="inherit"
-            title={t("Manual")}
-            onClick={toGithubDoc}
-          >
-            <HelpOutlineRounded fontSize="inherit" />
-          </IconButton>
-          <IconButton
-            size="medium"
-            color="inherit"
-            title={t("TG Channel")}
-            onClick={toTelegramChannel}
-          >
-            <Telegram fontSize="inherit" />
-          </IconButton>
-
-          <IconButton
-            size="medium"
-            color="inherit"
-            title={t("Github Repo")}
-            onClick={toGithubRepo}
-          >
-            <GitHub fontSize="inherit" />
-          </IconButton>
-        </ButtonGroup>
-      }
-    >
+    <BasePage title={t("Settings")}>
       <Grid container spacing={1.5} columns={{ xs: 6, sm: 6, md: 12 }}>
         <Grid size={6}>
           <Box

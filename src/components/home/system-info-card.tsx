@@ -8,7 +8,6 @@ import { getRunningMode, getSystemInfo, installService } from "@/services/cmds";
 import { useNavigate } from "react-router-dom";
 import { version as appVersion } from "@root/package.json";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { useLockFn } from "ahooks";
 import { Notice } from "@/components/base";
 
@@ -18,16 +17,13 @@ export const SystemInfoCard = () => {
   const navigate = useNavigate();
 
   // 系统信息状态
-  const [systemState, setSystemState] = useState({
-    osInfo: "",
-    lastCheckUpdate: "-",
-  });
+  const [osInfo, setOsInfo] = useState("");
 
   // 获取运行模式
   const { data: runningMode = "sidecar", mutate: mutateRunningMode } = useSWR(
     "getRunningMode",
     getRunningMode,
-    { suspense: false, revalidateOnFocus: false }
+    { suspense: false, revalidateOnFocus: false },
   );
 
   // 是否以sidecar模式运行
@@ -42,60 +38,11 @@ export const SystemInfoCard = () => {
         if (lines.length > 0) {
           const sysName = lines[0].split(": ")[1] || "";
           const sysVersion = lines[1].split(": ")[1] || "";
-          setSystemState(prev => ({ ...prev, osInfo: `${sysName} ${sysVersion}` }));
+          setOsInfo(`${sysName} ${sysVersion}`);
         }
       })
       .catch(console.error);
-
-    // 获取最后检查更新时间
-    const lastCheck = localStorage.getItem("last_check_update");
-    if (lastCheck) {
-      try {
-        const timestamp = parseInt(lastCheck, 10);
-        if (!isNaN(timestamp)) {
-          setSystemState(prev => ({ 
-            ...prev, 
-            lastCheckUpdate: new Date(timestamp).toLocaleString() 
-          }));
-        }
-      } catch (e) {
-        console.error("Error parsing last check update time", e);
-      }
-    } else if (verge?.auto_check_update) {
-      // 如果启用了自动检查更新但没有记录，设置当前时间并延迟检查
-      const now = Date.now();
-      localStorage.setItem("last_check_update", now.toString());
-      setSystemState(prev => ({ 
-        ...prev, 
-        lastCheckUpdate: new Date(now).toLocaleString() 
-      }));
-      
-      setTimeout(() => {
-        if (verge?.auto_check_update) {
-          checkUpdate().catch(console.error);
-        }
-      }, 5000);
-    }
-  }, [verge?.auto_check_update]);
-
-  // 自动检查更新逻辑
-  useSWR(
-    verge?.auto_check_update ? "checkUpdate" : null,
-    async () => {
-      const now = Date.now();
-      localStorage.setItem("last_check_update", now.toString());
-      setSystemState(prev => ({ 
-        ...prev, 
-        lastCheckUpdate: new Date(now).toLocaleString() 
-      }));
-      return await checkUpdate();
-    },
-    {
-      revalidateOnFocus: false,
-      refreshInterval: 24 * 60 * 60 * 1000, // 每天检查一次
-      dedupingInterval: 60 * 60 * 1000, // 1小时内不重复检查
-    }
-  );
+  }, []);
 
   // 导航到设置页面
   const goToSettings = useCallback(() => {
@@ -131,32 +78,23 @@ export const SystemInfoCard = () => {
     }
   }, [isSidecarMode, onInstallService]);
 
-  // 检查更新
-  const onCheckUpdate = useLockFn(async () => {
-    try {
-      const info = await checkUpdate();
-      if (!info?.available) {
-        Notice.success(t("Currently on the Latest Version"));
-      } else {
-        Notice.info(t("Update Available"), 2000);
-        goToSettings();
-      }
-    } catch (err: any) {
-      Notice.error(err.message || err.toString());
-    }
-  });
-
   // 是否启用自启动
-  const autoLaunchEnabled = useMemo(() => verge?.enable_auto_launch || false, [verge]);
+  const autoLaunchEnabled = useMemo(
+    () => verge?.enable_auto_launch || false,
+    [verge],
+  );
 
   // 运行模式样式
-  const runningModeStyle = useMemo(() => ({
-    cursor: isSidecarMode ? "pointer" : "default",
-    textDecoration: isSidecarMode ? "underline" : "none",
-    "&:hover": {
-      opacity: isSidecarMode ? 0.7 : 1,
-    },
-  }), [isSidecarMode]);
+  const runningModeStyle = useMemo(
+    () => ({
+      cursor: isSidecarMode ? "pointer" : "default",
+      textDecoration: isSidecarMode ? "underline" : "none",
+      "&:hover": {
+        opacity: isSidecarMode ? 0.7 : 1,
+      },
+    }),
+    [isSidecarMode],
+  );
 
   // 只有当verge存在时才渲染内容
   if (!verge) return null;
@@ -178,7 +116,7 @@ export const SystemInfoCard = () => {
             {t("OS Info")}
           </Typography>
           <Typography variant="body2" fontWeight="medium">
-            {systemState.osInfo}
+            {osInfo}
           </Typography>
         </Stack>
         <Divider />
@@ -207,24 +145,6 @@ export const SystemInfoCard = () => {
             sx={runningModeStyle}
           >
             {isSidecarMode ? t("Sidecar Mode") : t("Service Mode")}
-          </Typography>
-        </Stack>
-        <Divider />
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="body2" color="text.secondary">
-            {t("Last Check Update")}
-          </Typography>
-          <Typography
-            variant="body2"
-            fontWeight="medium"
-            onClick={onCheckUpdate}
-            sx={{
-              cursor: "pointer",
-              textDecoration: "underline",
-              "&:hover": { opacity: 0.7 },
-            }}
-          >
-            {systemState.lastCheckUpdate}
           </Typography>
         </Stack>
         <Divider />
