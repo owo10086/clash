@@ -240,14 +240,6 @@ jobs:
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Clash Verge Rev ${{ github.ref_name }}'
@@ -256,7 +248,6 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
-          includeUpdaterJson: true
 
       - name: Attest Windows bundles
         if: matrix.os == 'windows-latest'
@@ -395,8 +386,6 @@ jobs:
           pnpm build --target ${{ matrix.target }}
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
       - name: Get Version
         run: |
@@ -498,8 +487,6 @@ jobs:
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
@@ -541,12 +528,13 @@ jobs:
           files: target/${{ matrix.target }}/release/bundle/nsis/*setup*
 
       - name: Portable Bundle
+        if: false
         run: pnpm portable-fixed-webview2 ${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-update:
-    if: ${{ !contains(github.ref_name, '-rc') }}
+    if: false
     name: Release Update
     runs-on: ubuntu-latest
     needs: [update_tag]
@@ -573,7 +561,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-update-for-fixed-webview2:
-    if: ${{ !contains(github.ref_name, '-rc') }}
+    if: false
     runs-on: ubuntu-latest
     needs: [update_tag]
     steps:
@@ -599,7 +587,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   submit-to-winget:
-    if: ${{ !contains(github.ref_name, '-rc') }}
+    if: false
     name: Submit to Winget
     runs-on: ubuntu-latest
     needs: [update_tag, release-update]
@@ -623,7 +611,7 @@ jobs:
           token: ${{ secrets.WINGET_TOKEN  }}
 
   notify-telegram:
-    if: ${{ !contains(github.ref_name, '-rc') }}
+    if: false
     name: Notify Telegram
     runs-on: ubuntu-latest
     needs:
