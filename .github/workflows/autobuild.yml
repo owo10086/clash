@@ -1,4 +1,5 @@
 name: Auto Build
+run-name: Release Build
 
 on:
   workflow_dispatch:
