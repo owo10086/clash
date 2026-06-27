@@ -30,8 +30,8 @@ const TQ_MIHOMO = {
   refetchOnWindowFocus: false,
   refetchOnReconnect: false,
   staleTime: 1500,
-  retry: 3,
-  retryDelay: (attempt: number) => Math.min(200 * 2 ** attempt, 3000),
+  retry: 8,
+  retryDelay: (attempt: number) => Math.min(500 * 2 ** attempt, 5000),
 } as const
 
 const TQ_DEFAULTS = {

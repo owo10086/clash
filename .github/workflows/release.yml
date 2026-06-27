@@ -234,6 +234,10 @@ jobs:
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
+      - name: Configure macOS ad-hoc signing
+        if: matrix.os == 'macos-latest'
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+
       - name: Tauri build
         # 上游 5.24 修改了 latest.json 的生成逻辑，且依赖 tauri-plugin-update 2.10.0 暂未发布，故锁定在 0.5.23 版本
         uses: tauri-apps/tauri-action@v0.6.2
@@ -248,6 +252,12 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
+
+      - name: Verify macOS app signature
+        if: matrix.os == 'macos-latest'
+        run: |
+          APP_PATH="target/${{ matrix.target }}/release/bundle/macos/Clash Verge.app"
+          codesign --verify --deep --strict --verbose=4 "$APP_PATH"
 
       - name: Attest Windows bundles
         if: matrix.os == 'windows-latest'
